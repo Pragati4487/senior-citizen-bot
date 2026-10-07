@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sunny - Your Friendly Companion</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #e9f2f0;
+    --ink: #1b2a2a;
+    --teal: #0d6666;
+    --teal-dark: #094848;
+    --sun: #fbe3a1;
+    --white: #ffffff;
+    --size: 22px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: "Atkinson Hyperlegible", Verdana, Arial, sans-serif;
+    font-size: var(--size);
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--bg);
+    display: flex;
+    justify-content: center;
+  }
+  .app {
+    width: 100%;
+    max-width: 820px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: var(--white);
+    box-shadow: 0 0 40px rgba(13, 102, 102, 0.15);
+  }
+  header {
+    background: var(--teal);
+    color: var(--white);
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .sun {
+    width: 56px; height: 56px; flex: none;
+    border-radius: 50%;
+    background: var(--sun);
+    display: grid; place-items: center;
+    font-size: 32px;
+  }
+  header h1 { margin: 0; font-size: 1.3em; line-height: 1.1; }
+  header p { margin: 2px 0 0; font-size: 0.75em; opacity: 0.9; }
+  .tools { margin-left: auto; display: flex; gap: 8px; }
+  .tools button {
+    font: inherit; font-size: 0.7em; font-weight: 700;
+    min-width: 48px; min-height: 48px; padding: 6px 12px;
+    border: 2px solid var(--white); border-radius: 10px;
+    background: transparent; color: var(--white); cursor: pointer;
+  }
+  .tools button[aria-pressed="true"] { background: var(--white); color: var(--teal-dark); }
+  #chat {
+    flex: 1; overflow-y: auto; padding: 20px;
+    display: flex; flex-direction: column; gap: 14px;
+    background: var(--bg);
+  }
+  .msg {
+    max-width: 85%; padding: 14px 18px; white-space: pre-line;
+    border-radius: 18px;
+  }
+  .bot { align-self: flex-start; background: var(--white); border-left: 8px solid var(--teal); border-radius: 6px 18px 18px 18px; }
+  .user { align-self: flex-end; background: var(--sun); border-radius: 18px 6px 18px 18px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 20px 0; background: var(--white); }
+  .chips button {
+    font: inherit; font-size: 0.8em; min-height: 48px; padding: 8px 16px;
+    border: 2px solid var(--teal); border-radius: 24px;
+    background: var(--white); color: var(--teal-dark); cursor: pointer;
+  }
+  .chips button:hover { background: var(--teal); color: var(--white); }
+  form { display: flex; gap: 10px; padding: 14px 20px 20px; background: var(--white); }
+  input[type="text"] {
+    flex: 1; min-width: 0; font: inherit; min-height: 56px; padding: 8px 16px;
+    border: 3px solid var(--teal); border-radius: 12px; color: var(--ink);
+  }
+  form button {
+    font: inherit; font-weight: 700; min-height: 56px; padding: 8px 26px;
+    border: 0; border-radius: 12px; background: var(--teal); color: var(--white); cursor: pointer;
+  }
+  form button:hover { background: var(--teal-dark); }
+  button:focus-visible, input:focus-visible { outline: 4px solid #e8a200; outline-offset: 2px; }
+  .note { font-size: 0.6em; text-align: center; color: #4a5a5a; padding: 0 20px 12px; background: var(--white); margin: 0; }
+  @media (max-width: 560px) {
+    header p { display: none; }
+    .tools button { min-width: 44px; padding: 6px 8px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="sun" aria-hidden="true">&#9728;&#65039;</div>
+    <div>
+      <h1>Sunny</h1>
+      <p>Your friendly companion</p>
+    </div>
+    <div class="tools">
+      <button id="smaller" aria-label="Make text smaller">A-</button>
+      <button id="bigger" aria-label="Make text bigger">A+</button>
+      <button id="voice" aria-pressed="false" aria-label="Read replies aloud">Read aloud</button>
+    </div>
+  </header>
+
+  <div id="chat" aria-live="polite"></div>
+
+  <div class="chips" id="chips"></div>
+
+  <form id="form">
+    <input type="text" id="input" placeholder="Type your message here..." autocomplete="off" aria-label="Your message">
+    <button type="submit">Send</button>
+  </form>
+  <p class="note">Sunny is a friendly chat companion, not a doctor. In an emergency, call your local emergency number.</p>
+</div>
+
+<script>
+  const chat = document.getElementById("chat");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const chipsBox = document.getElementById("chips");
+
+  let readAloud = false;
+  let textSize = 22;
+  let pendingRiddle = null;
+
+  // Remember the person's name (safe even if the browser blocks storage)
+  function load(key) { try { return localStorage.getItem(key) || ""; } catch (e) { return ""; } }
+  function save(key, val) { try { localStorage.setItem(key, val); } catch (e) {} }
+  let userName = load("sunny_name");
+
+  const pick = (list) => list[Math.floor(Math.random() * list.length)];
+
+  const jokes = [
+    "Why did the scarecrow win an award? Because he was outstanding in his field!",
+    "What do you call a fish with no eyes? A fsh!",
+    "Why don't eggs tell jokes? They would crack each other up!",
+    "I told my doctor I broke my arm in two places. He told me to stop going to those places.",
+    "What did the ocean say to the beach? Nothing, it just waved!"
+  ];
+  const quotes = [
+    "\"Every day may not be good, but there is something good in every day.\"",
+    "\"You are never too old to set another goal or to dream a new dream.\" - C.S. Lewis",
+    "\"Kindness is a language which the deaf can hear and the blind can see.\" - Mark Twain",
+    "\"Age is merely the number of years the world has been enjoying you.\""
+  ];
+  const stories = [
+    "Once, a little bird found a seed in the cold snow. Instead of eating it, she planted it. All winter she watched over it. In spring it bloomed into a tall tree, and now every bird in the valley rests in its shade. Small kindnesses grow into big gifts.",
+    "An old clockmaker was asked why he never hurried. He smiled and said, \"The clock never rushes, yet it always arrives on time.\" Take your day one gentle tick at a time."
+  ];
+  const riddles = [
+    { q: "What has hands but cannot clap?", a: "clock" },
+    { q: "What gets wetter the more it dries?", a: "towel" },
+    { q: "What has keys but cannot open any locks?", a: "piano" },
+    { q: "What can you catch but never throw?", a: "cold" }
+  ];
+  const comfort = [
+    "I'm sorry you feel that way. I'm right here with you. Would you like to hear a joke, try a calm breathing exercise, or just talk?",
+    "Thank you for telling me. Feelings like this pass, like clouds. Maybe a cup of tea and a call to someone you love would help. I'm happy to keep you company too."
+  ];
+
+  const chips = [
+    "Tell me a joke", "Cheer me up", "Calm breathing", "Riddle",
+    "Tell me a story", "What day is it?", "Medicine reminder", "Drink water"
+  ];
+
+  function add(text, who) {
+    const d = document.createElement("div");
+    d.className = "msg " + who;
+    d.textContent = text;
+    chat.appendChild(d);
+    chat.scrollTop = chat.scrollHeight;
+    if (who === "bot" && readAloud && "speechSynthesis" in window) {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.9;
+      speechSynthesis.speak(u);
+    }
+  }
+
+  function greeting() {
+    const h = new Date().getHours();
+    const part = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+    return part + (userName ? ", " + userName : "") + "!";
+  }
+
+  function reply(raw) {
+    const t = raw.toLowerCase().trim();
+    const has = (re) => re.test(t);
+
+    // Emergencies come first
+    if (has(/chest pain|can'?t breathe|cannot breathe|i fell|i have fallen|emergency|heart attack|stroke|bleeding/)) {
+      return "This sounds serious. Please call your local emergency number right now, or ask someone nearby to help you. Please do not wait. I care about you, but I cannot call for help myself.";
+    }
+
+    // Answer to a riddle
+    if (pendingRiddle) {
+      const r = pendingRiddle;
+      pendingRiddle = null;
+      if (t.includes(r.a)) return "Yes, that's right! The answer is " + r.a + ". Well done! Would you like another riddle?";
+      if (has(/give up|don'?t know|tell me|answer/)) return "The answer is: " + r.a + ". Shall we try another?";
+      return "Good try! The answer was: " + r.a + ". Want another riddle?";
+    }
+
+    const nameMatch = t.match(/(?:my name is|call me)\s+([a-z]+)/);
+    if (nameMatch) {
+      userName = nameMatch[1].charAt(0).toUpperCase() + nameMatch[1].slice(1);
+      save("sunny_name", userName);
+      return "What a lovely name! It is a pleasure to meet you, " + userName + ".";
+    }
+
+    if (has(/\b(hi|hello|hey|namaste)\b|good (morning|afternoon|evening)/)) return greeting() + " I'm so glad you're here. How are you feeling today?";
+    if (has(/how are you/)) return "I'm doing wonderfully, thank you for asking! How about you?";
+    if (has(/\b(joke|funny|laugh)\b/)) return pick(jokes);
+    if (has(/cheer|quote|inspire|motivat/)) return pick(quotes);
+    if (has(/\b(sad|lonely|alone|down|depressed|tired|bored|worried|anxious|upset)\b/)) {
+      return pick(comfort) + "\n\nIf this feeling stays for many days, please share it with a family member or your doctor.";
+    }
+    if (has(/breath|calm|relax|stress/)) {
+      return "Let's breathe together, slowly.\n1. Breathe in through your nose for 4 counts.\n2. Hold gently for 4 counts.\n3. Breathe out through your mouth for 6 counts.\nRepeat this 4 times. Well done!";
+    }
+    if (has(/riddle|puzzle|game/)) {
+      pendingRiddle = pick(riddles);
+      return "Here is a riddle for you:\n" + pendingRiddle.q;
+    }
+    if (has(/story/)) return pick(stories);
+    if (has(/date|day|time/)) {
+      const n = new Date();
+      return "Today is " + n.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" }) +
+        ".\nThe time is " + n.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + ".";
+    }
+    if (has(/medic|pill|tablet/)) {
+      return "A gentle reminder: take your medicines exactly as your doctor told you, at the same times each day. A pill box and a phone alarm can help. If you are unsure about a dose, please ask your doctor or pharmacist.";
+    }
+    if (has(/water|drink|thirsty/)) return "Good idea! A glass of water now is good for you. Try to sip water through the day.";
+    if (has(/family|son|daughter|grand|friend/)) return "Family and friends are precious. Why not call someone you love today? A short chat can brighten both your days.";
+    if (has(/thank/)) return "You're very welcome! It makes me happy to help.";
+    if (has(/bye|goodnight|good night|see you/)) return "Goodbye" + (userName ? ", " + userName : "") + "! Take care, and come back and chat any time.";
+    if (has(/\b(good|great|fine|happy|well|okay|ok)\b/)) return "That is lovely to hear! Would you like a joke, a story, or a riddle?";
+
+    return "I'm listening. Tell me more, or tap one of the buttons below. I can tell jokes, stories and riddles, or help you relax.";
+  }
+
+  function send(text) {
+    if (!text.trim()) return;
+    add(text, "user");
+    setTimeout(() => add(reply(text), "bot"), 600);
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = input.value;
+    input.value = "";
+    send(v);
+  });
+
+  chips.forEach((label) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    b.addEventListener("click", () => send(label));
+    chipsBox.appendChild(b);
+  });
+
+  function setSize(n) {
+    textSize = Math.max(16, Math.min(34, n));
+    document.documentElement.style.setProperty("--size", textSize + "px");
+  }
+  document.getElementById("bigger").addEventListener("click", () => setSize(textSize + 3));
+  document.getElementById("smaller").addEventListener("click", () => setSize(textSize - 3));
+
+  const voiceBtn = document.getElementById("voice");
+  voiceBtn.addEventListener("click", () => {
+    readAloud = !readAloud;
+    voiceBtn.setAttribute("aria-pressed", readAloud);
+    if (!readAloud && "speechSynthesis" in window) speechSynthesis.cancel();
+  });
+
+  // First message
+  add(greeting() + " I'm Sunny, your friendly companion. What is your name? You can type \"My name is...\" or just tap a button below.", "bot");
+</script>
+</body>
+</html>
